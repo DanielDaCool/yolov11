@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 4
+names: ['Basketball', 'Goal', 'backboard_hit', 'rim_hit']
+
+roboflow:
+  workspace: card-dn6nv
+  project: basketball-player-detection-v8kcy-vqb6s
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/card-dn6nv/basketball-player-detection-v8kcy-vqb6s/dataset/1
