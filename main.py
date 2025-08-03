@@ -10,6 +10,27 @@ import sys
 import os
 import matplotlib.pyplot as plt
 from collections import deque
+from dataclasses import dataclass
+
+@dataclass
+class Vector3d:
+    x: float
+    y: float
+    z: float
+
+@dataclass
+class PositionAtTime:
+    x: float
+    y: float
+    z: float
+    t: float
+    
+    @classmethod
+    def from_vector(cls, vector: Vector3d, time: float):
+        return cls(vector.x, vector.y, vector.z, time)
+    
+    
+    
 
 # Ensure tmp folder exists
 os.makedirs("tmp", exist_ok=True)
@@ -19,6 +40,9 @@ live_coords_buffer = deque(maxlen=10)
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 plt.ion()
 plt.show()
+
+red_rim_position = (-1, -1, -1) #in meters
+blue_rim_position = (-1, -1, -1) #in meters
 
 
 def init_camera(laser_power=10, use_bag_file=False, bag_file_path=None, record_to_bag=False):
@@ -222,6 +246,87 @@ def detection_loop(model_path="yolov8n.pt", confidence=0.5, laser_power=10,
         cv2.destroyAllWindows()
         plt.ioff()
 
+
+
+
+class Ballistics:
+    gravity = 9.81  # m/s^2
+    blue_rim_position = Vector3d(0, 0, 0)  # need to add
+    red_rim_position = Vector3d(0, 0, 0)   # need to add
+
+    @staticmethod
+    def calculate_position_at_time(time: float, is_blue_rim: bool, time_at_rim: float, positions_list: list[PositionAtTime]) -> Vector3d:
+        vx = Ballistics.calculate_vx(positions_list)
+        vy = Ballistics.calculate_vy(positions_list)
+        initial_position = Ballistics.calculate_initial_position(positions_list, time_at_rim, is_blue_rim)
+        x = initial_position.x + vx * time
+        y = initial_position.y + vy * time
+        z = initial_position.z + (0.5 * Ballistics.gravity * time * time)
+
+        return Vector3d(x, y, z)
+
+    @staticmethod
+    def calculate_initial_position(positions: list[PositionAtTime], time_at_rim: float, is_blue_rim: bool) -> Vector3d:
+        if not positions:
+            return Vector3d(0, 0, 0)
+
+        vx = Ballistics.calculate_vx(positions)  # constant during flight
+        vy = Ballistics.calculate_vy(positions)  # constant during flight
+        rim_position = Ballistics.blue_rim_position if is_blue_rim else Ballistics.red_rim_position
+        initial_x = rim_position.x - (vx * time_at_rim)
+        initial_y = rim_position.y - (vy * time_at_rim)
+        initial_z = Ballistics.calculate_initial_z(positions)
+
+        return Vector3d(initial_x, initial_y, initial_z)
+
+    @staticmethod
+    def calculate_initial_z(positions: list[PositionAtTime]) -> float:
+        n = len(positions)
+        sum_t = 0
+        sum_z_prime = 0
+        sum_tt = 0
+        sum_t_z_prime = 0
+        
+        for i in range(n):
+            t = positions[i].t
+            z_prime = positions[i].z + 0.5 * Ballistics.gravity * t * t
+            sum_t += t
+            sum_z_prime += z_prime
+            sum_tt += t * t
+            sum_t_z_prime += t * z_prime
+
+        mean_t = sum_t / n
+        mean_z_prime = sum_z_prime / n
+
+        numerator = sum_t_z_prime - n * mean_t * mean_z_prime
+        denominator = sum_tt - n * mean_t * mean_t
+        vz0 = numerator / denominator
+        z0 = mean_z_prime - vz0 * mean_t
+
+        return z0
+
+    @staticmethod
+    def calculate_vx(positions: list[PositionAtTime]) -> float:
+        vx = 0
+        for i in range(len(positions) - 1):
+            delta_x = positions[i + 1].x - positions[i].x
+            delta_t = positions[i + 1].t - positions[i].t
+            vx += (delta_x / delta_t) * (1 / len(positions))
+        return vx
+
+    @staticmethod
+    def calculate_vy(positions: list[PositionAtTime]) -> float:
+        vy = 0
+        for i in range(len(positions) - 1):
+            delta_y = positions[i + 1].y - positions[i].y
+            delta_t = positions[i + 1].t - positions[i].t
+            vy += (delta_y / delta_t) * (1 / len(positions))
+        return vy
+
+    
+    
+    
+   
 if __name__ == "__main__":
     # Option 1: Live streaming
     # detection_loop(model_path="weights.pt", laser_power=10,record_to_bag=True)
